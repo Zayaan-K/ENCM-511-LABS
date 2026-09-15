@@ -59,50 +59,75 @@
 
 #include "xc.h"
 
+void delay(unsigned long count)
+{
+    volatile unsigned long i;
 
-#define FCY 16000000UL   // Change to match your instruction clock
-#include <libpic30.h>
+    for(i = 0; i < count; i++)
+    {
+        // busy wait
+    }
+}
 
-int main(void) {
+int main(void)
+{
+    // LEDs are outputs
+    TRISBbits.TRISB5 = 0;     // LED0
+    TRISBbits.TRISB6 = 0;     // LED1
+    TRISBbits.TRISB7 = 0;     // LED2
 
+    // Push buttons are inputs
+    TRISAbits.TRISA4 = 1;     // PB0
+    TRISBbits.TRISB8 = 1;     // PB1
 
-    TRISBbits.TRISB5 = 0;   // RB6 = LED output
-    TRISBbits.TRISB6 = 0;   // RB6 = LED output
-    TRISBbits.TRISB7 = 0;   //RB7
-    TRISBbits.TRISB8 = 1;   // RB8 = PB1 input
-    TRISBbits.TRISA4 = 1;   //RA4 = PB 2 input
+    // Start with all LEDs off
+    LATBbits.LATB5 = 0;
+    LATBbits.LATB6 = 0;
+    LATBbits.LATB7 = 0;
 
-
-    uint8_t buttons = (PORTAbits.RA4 << 0) | (PORTBbits.RB8 << 1);
-
-    while(1) {
-        LATBbits.LATB5 = 0; 
-        LATBbits.LATB6 = 0; 
-        LATBbits.LATB7 = 0; 
-        switch (buttons) {
-        case 0:
-            LATBbits.LATB5 = 0; 
-            LATBbits.LATB6 = 0; 
-            LATBbits.LATB7 = 0; 
-            break;
-        case 1:
-            LATBbits.LATB5 = 1; 
-            __delay_ms(250);
-            break;
-        case 2:
-            LATBbits.LATB6 = 1; 
-            __delay_ms(2000);  
-            break;
-        case 3:
-            LATBbits.LATB7 = 1; 
-            break;
-        default:
-            LATBbits.LATB5 = 0; 
-            LATBbits.LATB6 = 0; 
-            LATBbits.LATB7 = 0; 
-            break;
+    while(1)
+    {
+        // Both buttons pressed
+        if(PORTAbits.RA4 == 0 && PORTBbits.RB8 == 0)
+        {
+            LATBbits.LATB5 = 0;
+            LATBbits.LATB6 = 0;
+            LATBbits.LATB7 = 1;
         }
 
+        // PB0 pressed
+        else if(PORTAbits.RA4 == 0)
+        {
+            LATBbits.LATB6 = 0;
+            LATBbits.LATB7 = 0;
+
+            LATBbits.LATB5 = 1;
+            delay(100000);
+
+            LATBbits.LATB5 = 0;
+            delay(100000);
+        }
+
+        // PB1 pressed
+        else if(PORTBbits.RB8 == 0)
+        {
+            LATBbits.LATB5 = 0;
+            LATBbits.LATB7 = 0;
+
+            LATBbits.LATB6 = 1;
+            delay(800000);
+
+            LATBbits.LATB6 = 0;
+            delay(800000);
+        }
+
+        // No buttons pressed
+        else
+        {
+            LATBbits.LATB5 = 0;
+            LATBbits.LATB6 = 0;
+            LATBbits.LATB7 = 0;
+        }
     }
 
     return 0;
