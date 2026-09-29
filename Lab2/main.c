@@ -4,6 +4,9 @@
  *
  * Created FOR ENCM 511
  * PLEASE ADD DATE CREATED HERE: 2025-XX-XX
+ * 
+ * FAILURE TO UPDATE THIS HEADER WITH YOUR GROUP MEMBER NAMES
+ * MAY RESULT IN PENALTIES
  */
 
 // FSEC
@@ -57,76 +60,130 @@
 #pragma config ALTI2C1 = ALTI2CEN    //Alternate I2C pin Location->SDA1 and SCL1 on RB9 and RB8
 
 
-#include "xc.h"
+#include <xc.h>
+#include <stdint.h>
+#include "io.h"
+#include "timer.h"
 
-void delay(unsigned long count)
+// possible controller states
+typedef enum
 {
-    volatile unsigned long i;
+    STATE_OFF,
+    STATE_PB0,
+    STATE_PB0_PB1,
+    STATE_PB1
+} State;
 
-    for(i = 0; i < count; i++)
+
+// sets LED behaviour for each state
+static void set_state(State state, uint16_t pb2_rate)
+{
+    switch(state)
     {
-        // busy wait
+        // PB0 only
+        case STATE_PB0:
+            start_blink(250, BLINK_LED0);
+            break;
+
+        // PB0 and PB1 together
+        case STATE_PB0_PB1:
+            start_blink(500, BLINK_LED0);
+            break;
+
+        // PB1 only
+        case STATE_PB1:
+            start_blink(pb2_rate, BLINK_LED1);
+            break;
+
+        // no buttons
+        default:
+            stop_blink();
+            break;
     }
 }
 
+
 int main(void)
 {
-    // LEDs are outputs
-    TRISBbits.TRISB5 = 0;     // LED0
-    TRISBbits.TRISB6 = 0;     // LED1
-    TRISBbits.TRISB7 = 0;     // LED2
+    // current and next FSM states
+    State state = STATE_OFF;
+    State next_state;
 
-    // Push buttons are inputs
-    TRISAbits.TRISA4 = 1;     // PB0
-    TRISBbits.TRISB8 = 1;     // PB1
+    // remembered PB2 blink rate
+    uint16_t pb2_rate = 4000;
 
-    // Start with all LEDs off
-    LATBbits.LATB5 = 0;
-    LATBbits.LATB6 = 0;
-    LATBbits.LATB7 = 0;
+    // tracks PB2 rate changes
+    uint8_t rate_changed;
+
+    // initialize IO and timers
+    IOinit();
+    Timer2_init();
+    Timer3_init();
+
+    stop_blink();
 
     while(1)
     {
-        // Both buttons pressed
-        if(PORTAbits.RA4 == 0 && PORTBbits.RB8 == 0)
+        // sleep until an interrupt occurs
+        if(!button_event)
+            Idle();
+
+        // process button changes
+        if(button_event)
         {
-            LATBbits.LATB5 = 0;
-            LATBbits.LATB6 = 0;
-            LATBbits.LATB7 = 1;
-        }
+            button_event = 0;
 
-        // PB0 pressed
-        else if(PORTAbits.RA4 == 0)
-        {
-            LATBbits.LATB6 = 0;
-            LATBbits.LATB7 = 0;
+            // short settling time after a press
+            if(press_event)
+            {
+                press_event = 0;
+                delay_ms(20);
+            }
 
-            LATBbits.LATB5 = 1;
-            delay(100000);
+            rate_changed = 0;
 
-            LATBbits.LATB5 = 0;
-            delay(100000);
-        }
+            // PB2 was pressed and released
+            if(pb2_clicked)
+            {
+                pb2_clicked = 0;
 
-        // PB1 pressed
-        else if(PORTBbits.RB8 == 0)
-        {
-            LATBbits.LATB5 = 0;
-            LATBbits.LATB7 = 0;
+                delay_ms(20);
 
-            LATBbits.LATB6 = 1;
-            delay(800000);
+                if(!pb2_pressed)
+                {
+                    // cycle from 125 ms back to 4 seconds
+                    if(pb2_rate == 125)
+                        pb2_rate = 4000;
+                    else
+                        pb2_rate /= 2;
 
-            LATBbits.LATB6 = 0;
-            delay(800000);
-        }
+                    rate_changed = 1;
+                }
+            }
 
-        // No buttons pressed
-        else
-        {
-            LATBbits.LATB5 = 0;
-            LATBbits.LATB6 = 0;
-            LATBbits.LATB7 = 0;
+            button_event = 0;
+            press_event = 0;
+
+            // determine next FSM state
+            if(pb0_pressed && pb1_pressed)
+                next_state = STATE_PB0_PB1;
+
+            else if(pb0_pressed)
+                next_state = STATE_PB0;
+
+            else if(pb1_pressed)
+                next_state = STATE_PB1;
+
+            else
+                next_state = STATE_OFF;
+
+            // update outputs when state changes
+            if(next_state != state ||
+               (next_state == STATE_PB1 && rate_changed))
+            {
+                state = next_state;
+                set_state(state, pb2_rate);
+            }
         }
     }
 
